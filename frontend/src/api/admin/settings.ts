@@ -1350,6 +1350,42 @@ export const settingsAPI = {
   updateWebSearchEmulationConfig,
   testWebSearchEmulation,
   resetWebSearchUsage,
+  getKeywordFilterSettings,
+  updateKeywordFilterSettings,
 };
+
+export interface KeywordFilterRule {
+  pattern: string;
+  replacement: string;
+  enabled: boolean;
+}
+
+export interface KeywordFilterSettings {
+  enabled: boolean;
+  rules: KeywordFilterRule[];
+}
+
+/**
+ * Get keyword filter settings
+ */
+export async function getKeywordFilterSettings(): Promise<KeywordFilterSettings> {
+  const { data } = await apiClient.get<KeywordFilterSettings>(
+    "/admin/settings/keyword-filter",
+  );
+  return data;
+}
+
+/**
+ * Update keyword filter settings
+ */
+export async function updateKeywordFilterSettings(
+  settings: KeywordFilterSettings,
+): Promise<KeywordFilterSettings> {
+  const { data } = await apiClient.put<KeywordFilterSettings>(
+    "/admin/settings/keyword-filter",
+    settings,
+  );
+  return data;
+}
 
 export default settingsAPI;

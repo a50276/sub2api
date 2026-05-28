@@ -30,7 +30,12 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-const geminiStickySessionTTL = time.Hour
+const geminiStickySessionTTLBase = time.Hour
+
+// geminiStickySessionTTL 返回带 ±20% 抖动的 TTL，降低时序指纹可预测性
+func geminiStickySessionTTL() time.Duration {
+	return applyJitter(geminiStickySessionTTLBase, 0.20)
+}
 
 const (
 	geminiMaxRetries     = 5
@@ -134,7 +139,7 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 	// 5. 设置粘性会话绑定
 	// Set sticky session binding
 	if sessionHash != "" {
-		_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), cacheKey, selected.ID, geminiStickySessionTTL)
+		_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), cacheKey, selected.ID, geminiStickySessionTTL())
 	}
 
 	return s.hydrateSelectedAccount(ctx, selected)
@@ -217,7 +222,7 @@ func (s *GeminiMessagesCompatService) tryStickySessionHit(
 
 	// 刷新会话 TTL 并返回账号
 	// Refresh session TTL and return account
-	_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), cacheKey, geminiStickySessionTTL)
+	_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), cacheKey, geminiStickySessionTTL())
 	return account
 }
 

@@ -1137,6 +1137,13 @@ export interface AdminDataImportResult {
   errors?: AdminDataImportError[]
 }
 
+export type ProxyAssignStrategy = 'one-to-one' | 'round-robin' | 'least-used' | 'random'
+
+export interface AutoAssignProxyConfig {
+  strategy: ProxyAssignStrategy
+  exclude_used: boolean
+}
+
 export interface CodexSessionImportRequest {
   content?: string
   contents?: string[]
@@ -1144,6 +1151,7 @@ export interface CodexSessionImportRequest {
   notes?: string | null
   group_ids?: number[]
   proxy_id?: number | null
+  auto_assign_proxy?: AutoAssignProxyConfig
   concurrency?: number
   priority?: number
   rate_multiplier?: number

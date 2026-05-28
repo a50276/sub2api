@@ -443,6 +443,9 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// 请求整流器配置
 		adminSettings.GET("/rectifier", h.Admin.Setting.GetRectifierSettings)
 		adminSettings.PUT("/rectifier", h.Admin.Setting.UpdateRectifierSettings)
+		// 请求体关键词过滤配置（防御 Layer 2 关键词扫描检测）
+		adminSettings.GET("/keyword-filter", h.Admin.Setting.GetKeywordFilterSettings)
+		adminSettings.PUT("/keyword-filter", h.Admin.Setting.UpdateKeywordFilterSettings)
 		// Beta 策略配置
 		adminSettings.GET("/beta-policy", h.Admin.Setting.GetBetaPolicySettings)
 		adminSettings.PUT("/beta-policy", h.Admin.Setting.UpdateBetaPolicySettings)

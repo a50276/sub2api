@@ -1265,10 +1265,12 @@ func (s *OpenAIGatewayService) SnapshotOpenAIAccountSchedulerMetrics() OpenAIAcc
 }
 
 func (s *OpenAIGatewayService) openAIWSSessionStickyTTL() time.Duration {
+	base := openaiStickySessionTTL
 	if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds > 0 {
-		return time.Duration(s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds) * time.Second
+		base = time.Duration(s.cfg.Gateway.OpenAIWS.StickySessionTTLSeconds) * time.Second
 	}
-	return openaiStickySessionTTL
+	// ±20% 抖动避免所有 session 同时过期，降低时序指纹可预测性
+	return applyJitter(base, 0.20)
 }
 
 func (s *OpenAIGatewayService) openAIWSLBTopK() int {

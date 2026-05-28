@@ -3661,3 +3661,89 @@ func equalPlatformQuotaSettings(before, after map[string]*service.DefaultPlatfor
 	}
 	return true
 }
+
+// ============================================================
+// Keyword Filter Settings
+// ============================================================
+
+// GetKeywordFilterSettings 获取请求体关键词过滤配置
+// GET /api/v1/admin/settings/keyword-filter
+func (h *SettingHandler) GetKeywordFilterSettings(c *gin.Context) {
+	settings, err := h.settingService.GetKeywordFilterSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	rules := settings.Rules
+	if rules == nil {
+		rules = []service.KeywordFilterRule{}
+	}
+	response.Success(c, gin.H{
+		"enabled": settings.Enabled,
+		"rules":   rules,
+	})
+}
+
+// UpdateKeywordFilterSettingsRequest 更新关键词过滤配置请求
+type UpdateKeywordFilterSettingsRequest struct {
+	Enabled bool                         `json:"enabled"`
+	Rules   []service.KeywordFilterRule   `json:"rules"`
+}
+
+// UpdateKeywordFilterSettings 更新请求体关键词过滤配置
+// PUT /api/v1/admin/settings/keyword-filter
+func (h *SettingHandler) UpdateKeywordFilterSettings(c *gin.Context) {
+	var req UpdateKeywordFilterSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	const maxRules = 100
+	const maxPatternLen = 1000
+	if len(req.Rules) > maxRules {
+		response.BadRequest(c, "Too many rules (max 100)")
+		return
+	}
+
+	var cleanedRules []service.KeywordFilterRule
+	for _, r := range req.Rules {
+		r.Pattern = strings.TrimSpace(r.Pattern)
+		if r.Pattern == "" {
+			continue
+		}
+		if len(r.Pattern) > maxPatternLen {
+			response.BadRequest(c, "Pattern too long (max 1000 characters)")
+			return
+		}
+		if len(r.Replacement) > maxPatternLen {
+			response.BadRequest(c, "Replacement too long (max 1000 characters)")
+			return
+		}
+		cleanedRules = append(cleanedRules, r)
+	}
+
+	settings := &service.KeywordFilterSettings{
+		Enabled: req.Enabled,
+		Rules:   cleanedRules,
+	}
+
+	if err := h.settingService.SetKeywordFilterSettings(c.Request.Context(), settings); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	updated, err := h.settingService.GetKeywordFilterSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	updatedRules := updated.Rules
+	if updatedRules == nil {
+		updatedRules = []service.KeywordFilterRule{}
+	}
+	response.Success(c, gin.H{
+		"enabled": updated.Enabled,
+		"rules":   updatedRules,
+	})
+}

@@ -790,6 +790,107 @@
               </template>
             </div>
           </div>
+
+          <!-- Keyword Filter Settings -->
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t('admin.settings.keywordFilter.title') }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.keywordFilter.description') }}
+              </p>
+            </div>
+            <div class="p-6">
+              <div v-if="keywordFilterLoading" class="flex items-center gap-2 text-gray-500">
+                <svg class="h-5 w-5 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+                {{ t('common.loading') }}
+              </div>
+              <template v-else>
+                <div class="space-y-4">
+                  <!-- Master Toggle -->
+                  <div class="flex items-center justify-between">
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t('admin.settings.keywordFilter.enabled') }}
+                    </label>
+                    <button
+                      type="button"
+                      :class="[
+                        'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
+                        keywordFilterSettings.enabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+                      ]"
+                      @click="keywordFilterSettings.enabled = !keywordFilterSettings.enabled"
+                    >
+                      <span
+                        :class="[
+                          'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                          keywordFilterSettings.enabled ? 'translate-x-5' : 'translate-x-0'
+                        ]"
+                      />
+                    </button>
+                  </div>
+
+                  <!-- Rules List -->
+                  <div class="space-y-2">
+                    <div
+                      v-for="(rule, index) in keywordFilterSettings.rules"
+                      :key="index"
+                      class="flex items-center gap-2 rounded-lg border border-gray-200 p-2 dark:border-dark-500"
+                    >
+                      <input
+                        type="checkbox"
+                        v-model="rule.enabled"
+                        class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-400 dark:bg-dark-700"
+                      />
+                      <input
+                        v-model="rule.pattern"
+                        type="text"
+                        class="input flex-1 text-sm"
+                        :placeholder="t('admin.settings.keywordFilter.patternPlaceholder')"
+                      />
+                      <span class="text-xs text-gray-400">→</span>
+                      <input
+                        v-model="rule.replacement"
+                        type="text"
+                        class="input flex-1 text-sm"
+                        :placeholder="t('admin.settings.keywordFilter.replacementPlaceholder')"
+                      />
+                      <button
+                        type="button"
+                        class="text-red-500 hover:text-red-700"
+                        @click="keywordFilterSettings.rules.splice(index, 1)"
+                      >
+                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Add Rule + Save -->
+                  <div class="flex items-center gap-2">
+                    <button
+                      type="button"
+                      class="btn btn-secondary text-sm"
+                      @click="keywordFilterSettings.rules.push({ pattern: '', replacement: '', enabled: true })"
+                    >
+                      + {{ t('admin.settings.keywordFilter.addRule') }}
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-primary text-sm"
+                      :disabled="keywordFilterSaving"
+                      @click="saveKeywordFilterSettings"
+                    >
+                      {{ keywordFilterSaving ? t('common.saving') : t('common.save') }}
+                    </button>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+
           <!-- Beta Policy Settings -->
           <div class="card">
             <div
@@ -6863,6 +6964,14 @@ const rectifierForm = reactive({
   apikey_signature_patterns: [] as string[],
 });
 
+// Keyword Filter 状态
+const keywordFilterLoading = ref(true);
+const keywordFilterSaving = ref(false);
+const keywordFilterSettings = reactive({
+  enabled: true,
+  rules: [] as Array<{ pattern: string; replacement: string; enabled: boolean }>,
+});
+
 // Beta Policy 状态
 const betaPolicyLoading = ref(true);
 const betaPolicySaving = ref(false);
@@ -8698,6 +8807,39 @@ async function saveRectifierSettings() {
   }
 }
 
+// Keyword Filter 方法
+async function loadKeywordFilterSettings() {
+  keywordFilterLoading.value = true;
+  try {
+    const settings = await adminAPI.settings.getKeywordFilterSettings();
+    keywordFilterSettings.enabled = settings.enabled;
+    keywordFilterSettings.rules = settings.rules || [];
+  } catch (_error: unknown) {
+    // Silent fail - settings will use defaults
+  } finally {
+    keywordFilterLoading.value = false;
+  }
+}
+
+async function saveKeywordFilterSettings() {
+  keywordFilterSaving.value = true;
+  try {
+    const updated = await adminAPI.settings.updateKeywordFilterSettings({
+      enabled: keywordFilterSettings.enabled,
+      rules: keywordFilterSettings.rules.filter((r) => r.pattern.trim() !== ""),
+    });
+    keywordFilterSettings.enabled = updated.enabled;
+    keywordFilterSettings.rules = updated.rules || [];
+    appStore.showSuccess(t("admin.settings.keywordFilter.saved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(error, t("admin.settings.keywordFilter.saveFailed")),
+    );
+  } finally {
+    keywordFilterSaving.value = false;
+  }
+}
+
 const betaPolicyActionOptions = computed(() => [
   { value: "pass", label: t("admin.settings.betaPolicy.actionPass") },
   { value: "filter", label: t("admin.settings.betaPolicy.actionFilter") },
@@ -9234,6 +9376,7 @@ onMounted(() => {
   loadRateLimit429CooldownSettings();
   loadStreamTimeoutSettings();
   loadRectifierSettings();
+  loadKeywordFilterSettings();
   loadBetaPolicySettings();
   loadProviders();
 });

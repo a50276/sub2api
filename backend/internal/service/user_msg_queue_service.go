@@ -236,8 +236,8 @@ func (s *UserMessageQueueService) CalculateRPMAwareDelay(ctx context.Context, ac
 		}
 	}
 
-	// ±15% 随机抖动
-	return applyJitter(baseDelay, 0.15)
+	// ±30% 随机抖动（更接近真实人类输入间隔的方差，降低时序指纹可预测性）
+	return applyJitter(baseDelay, 0.30)
 }
 
 // StartCleanupWorker 启动孤儿锁清理 worker

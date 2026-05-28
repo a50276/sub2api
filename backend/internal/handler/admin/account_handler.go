@@ -1298,14 +1298,42 @@ func (h *AccountHandler) BatchRefresh(c *gin.Context) {
 // POST /api/v1/admin/accounts/batch
 func (h *AccountHandler) BatchCreate(c *gin.Context) {
 	var req struct {
-		Accounts []CreateAccountRequest `json:"accounts" binding:"required,min=1"`
+		Accounts        []CreateAccountRequest         `json:"accounts" binding:"required,min=1"`
+		AutoAssignProxy *service.AutoAssignProxyConfig  `json:"auto_assign_proxy"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	// Validate mutual exclusion: auto_assign_proxy and per-item proxy_id cannot coexist.
+	if req.AutoAssignProxy != nil {
+		for _, item := range req.Accounts {
+			if item.ProxyID != nil {
+				response.BadRequest(c, "proxy_id and auto_assign_proxy are mutually exclusive")
+				return
+			}
+		}
+	}
 
 	executeAdminIdempotentJSON(c, "admin.accounts.batch_create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		// Pre-compute auto-assign proxy IDs if configured.
+		var autoAssignProxyIDs []*int64
+		if req.AutoAssignProxy != nil {
+			proxies, proxyErr := h.adminService.GetAllProxiesWithAccountCount(ctx)
+			if proxyErr != nil {
+				return nil, fmt.Errorf("failed to fetch proxies for auto-assign: %w", proxyErr)
+			}
+			autoAssignProxyIDs, proxyErr = service.AssignProxies(service.ProxyAssignInput{
+				Strategy:     req.AutoAssignProxy.Strategy,
+				Proxies:      proxies,
+				AccountCount: len(req.Accounts),
+				ExcludeUsed:  req.AutoAssignProxy.ExcludeUsed,
+			})
+			if proxyErr != nil {
+				return nil, fmt.Errorf("proxy auto-assign failed: %w", proxyErr)
+			}
+		}
+
 		success := 0
 		failed := 0
 		results := make([]gin.H, 0, len(req.Accounts))
@@ -1313,7 +1341,7 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 		var antigravityPrivacyAccounts []*service.Account
 		var openaiPrivacyAccounts []*service.Account
 
-		for _, item := range req.Accounts {
+		for i, item := range req.Accounts {
 			if item.RateMultiplier != nil && *item.RateMultiplier < 0 {
 				failed++
 				results = append(results, gin.H{
@@ -1329,6 +1357,12 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 
 			skipCheck := item.ConfirmMixedChannelRisk != nil && *item.ConfirmMixedChannelRisk
 
+			// Use auto-assigned proxy if available, otherwise use per-item proxy.
+			proxyID := item.ProxyID
+			if autoAssignProxyIDs != nil && i < len(autoAssignProxyIDs) {
+				proxyID = autoAssignProxyIDs[i]
+			}
+
 			account, err := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
 				Name:                  item.Name,
 				Notes:                 item.Notes,
@@ -1336,7 +1370,7 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 				Type:                  item.Type,
 				Credentials:           item.Credentials,
 				Extra:                 item.Extra,
-				ProxyID:               item.ProxyID,
+				ProxyID:               proxyID,
 				Concurrency:           item.Concurrency,
 				Priority:              item.Priority,
 				RateMultiplier:        item.RateMultiplier,

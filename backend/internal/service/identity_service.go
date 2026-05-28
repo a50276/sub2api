@@ -35,6 +35,32 @@ var defaultFingerprint = Fingerprint{
 	StainlessRuntimeVersion: "v24.13.0",
 }
 
+// platformFingerprints 是真实 Claude Code 用户的平台分布组合。
+// 用于 mimicry 路径下为不同账号生成不同但一致的平台指纹，
+// 避免所有账号都表现为相同的 OS/Arch 组合。
+var platformFingerprints = []struct {
+	os   string
+	arch string
+}{
+	{"macOS", "arm64"},      // Apple Silicon Mac (最常见)
+	{"macOS", "x64"},        // Intel Mac
+	{"Linux", "x64"},        // Linux x64
+	{"Linux", "arm64"},      // Linux ARM (原默认)
+	{"Windows_NT", "x64"},   // Windows
+}
+
+// diversifyPlatformFingerprint 基于 accountID 确定性选择平台指纹组合。
+// 同一 accountID 始终返回相同结果（指纹归一），但不同 accountID 分布到不同平台。
+func diversifyPlatformFingerprint(accountID int64, fp *Fingerprint) {
+	idx := accountID % int64(len(platformFingerprints))
+	if idx < 0 {
+		idx = -idx
+	}
+	p := platformFingerprints[idx]
+	fp.StainlessOS = p.os
+	fp.StainlessArch = p.arch
+}
+
 // Fingerprint represents account fingerprint data
 type Fingerprint struct {
 	ClientID                string
@@ -105,6 +131,12 @@ func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID 
 	// 缓存不存在或解析失败，创建新指纹
 	fp := s.createFingerprintFromHeaders(headers)
 
+	// 如果客户端未提供 OS/Arch 头（走 mimicry 路径），基于 accountID 确定性选择平台组合，
+	// 使不同账号呈现不同的平台指纹，而非所有账号都是固定的 Linux/arm64。
+	if headers.Get("X-Stainless-OS") == "" && headers.Get("X-Stainless-Arch") == "" {
+		diversifyPlatformFingerprint(accountID, fp)
+	}
+
 	// 生成随机ClientID
 	fp.ClientID = generateClientID()
 	fp.UpdatedAt = time.Now().Unix()
@@ -114,7 +146,7 @@ func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID 
 		logger.LegacyPrintf("service.identity", "Warning: failed to cache fingerprint for account %d: %v", accountID, err)
 	}
 
-	logger.LegacyPrintf("service.identity", "Created new fingerprint for account %d with client_id: %s", accountID, fp.ClientID)
+	logger.LegacyPrintf("service.identity", "Created new fingerprint for account %d with client_id: %s (os=%s, arch=%s)", accountID, fp.ClientID, fp.StainlessOS, fp.StainlessArch)
 	return fp, nil
 }
 

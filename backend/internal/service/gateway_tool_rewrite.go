@@ -17,10 +17,15 @@ import (
 const toolNameRewriteKey = "claude_tool_name_rewrite"
 
 // staticToolNameRewrites 是"静态前缀映射"，与 Parrot src/transform/cc_mimicry.py
-// TOOL_NAME_REWRITES 完全一致。只有以这些前缀开头的工具会被重写。
+// TOOL_NAME_REWRITES 完全一致，并扩展覆盖已知第三方工具前缀以防御 Layer 3 工具名指纹检测。
 var staticToolNameRewrites = map[string]string{
 	"sessions_": "cc_sess_",
 	"session_":  "cc_ses_",
+	// 已知第三方工具前缀：防止工具名组合触发 Anthropic 指纹匹配
+	"openclaw_": "cc_ocl_",
+	"hermes_":   "cc_hms_",
+	"claw_":     "cc_clw_",
+	"oc_":       "cc_oc_",
 }
 
 // fakeToolNamePrefixes 是"动态映射"的前缀池，与 Parrot _FAKE_PREFIXES 一致。

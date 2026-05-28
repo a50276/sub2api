@@ -949,6 +949,34 @@ func sanitizeSystemText(text string) string {
 	return text
 }
 
+// applyKeywordFilterToBody 对请求体全文应用可配置的关键词替换规则（防御 Layer 2 关键词扫描检测）。
+// 在 normalizeClaudeOAuthRequestBody 之后调用，对整个 JSON body 做字符串级替换。
+// 不改变 JSON 结构，只做纯文本替换。安全性：规则由管理员配置，替换在 body 字符串层面操作。
+func (s *GatewayService) applyKeywordFilterToBody(ctx context.Context, body []byte) []byte {
+	if len(body) == 0 || s == nil || s.settingService == nil {
+		return body
+	}
+	settings, err := s.settingService.GetKeywordFilterSettings(ctx)
+	if err != nil || settings == nil || !settings.Enabled || len(settings.Rules) == 0 {
+		return body
+	}
+	text := string(body)
+	changed := false
+	for _, rule := range settings.Rules {
+		if !rule.Enabled || rule.Pattern == "" {
+			continue
+		}
+		if strings.Contains(text, rule.Pattern) {
+			text = strings.ReplaceAll(text, rule.Pattern, rule.Replacement)
+			changed = true
+		}
+	}
+	if changed {
+		return []byte(text)
+	}
+	return body
+}
+
 func marshalAnthropicSystemTextBlock(text string, includeCacheControl bool) ([]byte, error) {
 	block := anthropicSystemTextBlockPayload{
 		Type: "text",
@@ -1276,6 +1304,9 @@ func (s *GatewayService) applyClaudeCodeOAuthMimicryToBody(
 	}
 
 	body, _ = normalizeClaudeOAuthRequestBody(body, model, normalizeOpts)
+
+	// 关键词过滤：对整个 body 应用可配置的关键词替换规则（防御 Layer 2 关键词扫描检测）
+	body = s.applyKeywordFilterToBody(ctx, body)
 
 	// Phase D+E+F: messages cache 策略 + 工具名混淆 + tools[-1] 断点
 	// 对齐 Parrot transform_request 里剩余的字段级改写。顺序有语义约束：
@@ -4468,6 +4499,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 		body, reqModel = normalizeClaudeOAuthRequestBody(body, reqModel, normalizeOpts)
 
+		// 关键词过滤：对整个 body 应用可配置的关键词替换规则（防御 Layer 2 关键词扫描检测）
+		body = s.applyKeywordFilterToBody(ctx, body)
+
 		// D/E/F: 可选 messages cache 策略 + 工具名混淆 + tools[-1] 断点
 		// 与 forward_as_chat_completions / forward_as_responses 路径对齐，
 		// 原生 /v1/messages 路径也走同一套可配置字段级改写。
@@ -6679,9 +6713,18 @@ func buildBetaTokenSet(tokens []string) map[string]struct{} {
 
 var defaultDroppedBetasSet = buildBetaTokenSet(claude.DroppedBetas)
 
+// fingerprintPreservedHeaders 是由 ApplyFingerprint 预先设置的、代表每账号指纹多样性的头。
+// applyClaudeCodeMimicHeaders 在强制 DefaultHeaders 时应跳过这些头，保留指纹归一的结果。
+var fingerprintPreservedHeaders = map[string]bool{
+	"x-stainless-os":   true,
+	"x-stainless-arch": true,
+}
+
 // applyClaudeCodeMimicHeaders forces "Claude Code-like" request headers.
 // This mirrors opencode-anthropic-auth behavior: do not trust downstream
 // headers when using Claude Code-scoped OAuth credentials.
+// 注意：X-Stainless-OS 和 X-Stainless-Arch 由 ApplyFingerprint 基于账号 ID 确定性设置，
+// 此函数不覆盖它们，以保持每账号平台指纹多样性（指纹归一）。
 func applyClaudeCodeMimicHeaders(req *http.Request, isStream bool) {
 	if req == nil {
 		return
@@ -6694,12 +6737,24 @@ func applyClaudeCodeMimicHeaders(req *http.Request, isStream bool) {
 		if value == "" {
 			continue
 		}
+		// 跳过已由 ApplyFingerprint 设置的每账号多样化头，保留指纹归一结果
+		if fingerprintPreservedHeaders[strings.ToLower(key)] {
+			if getHeaderRaw(req.Header, key) != "" {
+				continue
+			}
+		}
 		setHeaderRaw(req.Header, resolveWireCasing(key), value)
 	}
 	// Real Claude CLI uses Accept: application/json (even for streaming).
 	setHeaderRaw(req.Header, "Accept", "application/json")
 	if isStream {
 		setHeaderRaw(req.Header, "x-stainless-helper-method", "stream")
+	}
+	// X-Stainless-Timeout 随机化：真实 Claude Code 根据请求类型使用不同超时值。
+	// Streaming 使用 600，非 streaming 在 [300, 600] 范围内选择，降低指纹一致性。
+	if !isStream {
+		timeouts := []string{"300", "360", "420", "480", "540", "600"}
+		setHeaderRaw(req.Header, "X-Stainless-Timeout", timeouts[mathrand.Intn(len(timeouts))])
 	}
 	// Real Claude CLI 每个请求都会生成一个新的 UUID 放在 x-client-request-id。
 	// 上游会以此作为会话/请求指纹的一部分，缺失或重复都可能触发第三方判定。
@@ -9024,6 +9079,9 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 	if shouldMimicClaudeCode {
 		normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: true}
 		body, reqModel = normalizeClaudeOAuthRequestBody(body, reqModel, normalizeOpts)
+
+		// 关键词过滤
+		body = s.applyKeywordFilterToBody(ctx, body)
 
 		body = s.rewriteMessageCacheControlIfEnabled(ctx, body)
 		if rw := buildToolNameRewriteFromBody(body); rw != nil {

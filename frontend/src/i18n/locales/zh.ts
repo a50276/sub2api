@@ -3666,6 +3666,15 @@ export default {
       expired: '已过期',
       proxy: '代理',
       noProxy: '无代理',
+      autoAssignProxy: '自动分配代理',
+      autoAssignStrategy: '分配策略',
+      autoAssignOneToOne: '一对一分配（代理数≥账号数）',
+      autoAssignRoundRobin: '轮询分配',
+      autoAssignLeastUsed: '最少使用优先',
+      autoAssignRandom: '随机分配',
+      autoAssignExcludeUsed: '排除已被使用的代理',
+      autoAssignAvailableProxies: '可用代理: {count} 个',
+      autoAssignNotEnoughProxies: '代理数量不足，一对一分配需要至少 {need} 个可用代理，当前仅 {have} 个',
       concurrency: '并发数',
       loadFactor: '负载因子',
       loadFactorHint: '提高负载因子可以提高对账号的调度频率',
@@ -6300,6 +6309,16 @@ export default {
         addPattern: '添加关键词',
         saved: '整流器设置保存成功',
         saveFailed: '保存整流器设置失败'
+      },
+      keywordFilter: {
+        title: '关键词过滤',
+        description: '对转发到上游的请求体进行关键词替换，防御第三方工具特征检测。规则按顺序逐条执行。',
+        enabled: '启用关键词过滤',
+        patternPlaceholder: '匹配关键词',
+        replacementPlaceholder: '替换为（空=删除）',
+        addRule: '添加规则',
+        saved: '关键词过滤设置保存成功',
+        saveFailed: '保存关键词过滤设置失败'
       },
       betaPolicy: {
         title: 'Beta 策略',

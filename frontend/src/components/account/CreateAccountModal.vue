@@ -2466,8 +2466,38 @@
         <div class="mb-1 flex items-center gap-2">
           <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
           <ProxyAdBanner />
+          <label class="ml-auto flex cursor-pointer items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+            <input
+              type="checkbox"
+              v-model="autoAssignEnabled"
+              class="h-3.5 w-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-400 dark:bg-dark-700"
+            />
+            {{ t('admin.accounts.autoAssignProxy') }}
+          </label>
         </div>
-        <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
+        <ProxySelector v-if="!autoAssignEnabled" v-model="form.proxy_id" :proxies="proxies" />
+        <div v-else class="space-y-2 rounded-lg border border-gray-200 p-3 dark:border-dark-400">
+          <select
+            v-model="autoAssignStrategy"
+            class="input w-full text-sm"
+          >
+            <option value="one-to-one">{{ t('admin.accounts.autoAssignOneToOne') }}</option>
+            <option value="round-robin">{{ t('admin.accounts.autoAssignRoundRobin') }}</option>
+            <option value="least-used">{{ t('admin.accounts.autoAssignLeastUsed') }}</option>
+            <option value="random">{{ t('admin.accounts.autoAssignRandom') }}</option>
+          </select>
+          <label class="flex cursor-pointer items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400">
+            <input
+              type="checkbox"
+              v-model="autoAssignExcludeUsed"
+              class="h-3.5 w-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-400 dark:bg-dark-700"
+            />
+            {{ t('admin.accounts.autoAssignExcludeUsed') }}
+          </label>
+          <div class="text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.autoAssignAvailableProxies', { count: availableProxyCount }) }}
+          </div>
+        </div>
       </div>
 
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -3180,6 +3210,7 @@ import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
+import { assignProxies, type ProxyAssignStrategy, type AutoAssignProxyConfig } from '@/utils/proxyAutoAssign'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
@@ -3575,6 +3606,23 @@ const form = reactive({
   group_ids: [] as number[],
   expires_at: null as number | null
 })
+
+// Auto-assign proxy state
+const autoAssignEnabled = ref(false)
+const autoAssignStrategy = ref<ProxyAssignStrategy>('round-robin')
+const autoAssignExcludeUsed = ref(true)
+
+const availableProxyCount = computed(() => {
+  if (autoAssignExcludeUsed.value) {
+    return props.proxies.filter(p => (p.account_count ?? 0) === 0).length
+  }
+  return props.proxies.length
+})
+
+const autoAssignConfig = computed<AutoAssignProxyConfig>(() => ({
+  strategy: autoAssignStrategy.value,
+  exclude_used: autoAssignExcludeUsed.value
+}))
 
 // Helper to check if current type needs OAuth flow
 const isOAuthFlow = computed(() => {
@@ -4080,6 +4128,9 @@ const resetForm = () => {
   form.type = 'oauth'
   form.credentials = {}
   form.proxy_id = null
+  autoAssignEnabled.value = false
+  autoAssignStrategy.value = 'round-robin'
+  autoAssignExcludeUsed.value = true
   form.concurrency = 10
   form.load_factor = null
   form.priority = 1
@@ -4627,6 +4678,11 @@ const createAccountAndFinish = async (
       delete credentials.compact_model_mapping
     }
   }
+  // Determine proxy_id: auto-assign for single account or manual selection.
+  const singleProxyId = autoAssignEnabled.value
+    ? (assignProxies(props.proxies, 1, autoAssignConfig.value)[0] ?? null)
+    : form.proxy_id
+
   await doCreateAccount({
     name: form.name,
     notes: form.notes,
@@ -4634,7 +4690,7 @@ const createAccountAndFinish = async (
     type,
     credentials,
     extra: finalExtra,
-    proxy_id: form.proxy_id,
+    proxy_id: singleProxyId,
     concurrency: form.concurrency,
     load_factor: form.load_factor ?? undefined,
     priority: form.priority,
@@ -4694,6 +4750,9 @@ const handleOpenAIExchange = async (authCode: string) => {
     }
 
     if (shouldCreateOpenAI) {
+      const exchangeProxyId = autoAssignEnabled.value
+        ? (assignProxies(props.proxies, 1, autoAssignConfig.value)[0] ?? null)
+        : form.proxy_id
       await adminAPI.accounts.create({
         name: form.name,
         notes: form.notes,
@@ -4701,7 +4760,7 @@ const handleOpenAIExchange = async (authCode: string) => {
         type: 'oauth',
         credentials,
         extra,
-        proxy_id: form.proxy_id,
+        proxy_id: exchangeProxyId,
         concurrency: form.concurrency,
         load_factor: form.load_factor ?? undefined,
         priority: form.priority,
@@ -4774,11 +4833,10 @@ const handleOpenAIImportCodexSession = async (content: string) => {
 
   try {
     const extra = buildOpenAIExtra()
-    const result = await adminAPI.accounts.importCodexSession({
+    const codexPayload: Record<string, unknown> = {
       content: trimmed,
       name: form.name,
       notes: form.notes || null,
-      proxy_id: form.proxy_id,
       concurrency: form.concurrency,
       load_factor: form.load_factor ?? undefined,
       priority: form.priority,
@@ -4789,7 +4847,13 @@ const handleOpenAIImportCodexSession = async (content: string) => {
       credential_extras: Object.keys(credentialExtras).length > 0 ? credentialExtras : undefined,
       extra,
       update_existing: true
-    })
+    }
+    if (autoAssignEnabled.value) {
+      codexPayload.auto_assign_proxy = autoAssignConfig.value
+    } else {
+      codexPayload.proxy_id = form.proxy_id
+    }
+    const result = await adminAPI.accounts.importCodexSession(codexPayload as any)
 
     const successCount = result.created + result.updated
     const params = {
@@ -4852,6 +4916,11 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
   oauthClient.loading.value = true
   oauthClient.error.value = ''
 
+  // Pre-compute auto-assign proxy IDs for batch.
+  const batchProxyIDs = autoAssignEnabled.value
+    ? assignProxies(props.proxies, refreshTokens.length, autoAssignConfig.value)
+    : null
+
   let successCount = 0
   let failedCount = 0
   const errors: string[] = []
@@ -4860,9 +4929,10 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
   try {
     for (let i = 0; i < refreshTokens.length; i++) {
       try {
+        const itemProxyId = batchProxyIDs ? batchProxyIDs[i] : form.proxy_id
         const tokenInfo = await oauthClient.validateRefreshToken(
           refreshTokens[i],
-          form.proxy_id,
+          itemProxyId,
           clientId
         )
         if (!tokenInfo) {
@@ -4905,7 +4975,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
             type: 'oauth',
             credentials,
             extra,
-            proxy_id: form.proxy_id,
+            proxy_id: itemProxyId,
             concurrency: form.concurrency,
             load_factor: form.load_factor ?? undefined,
             priority: form.priority,
@@ -4972,6 +5042,11 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
   antigravityOAuth.loading.value = true
   antigravityOAuth.error.value = ''
 
+  // Pre-compute auto-assign proxy IDs for batch.
+  const agBatchProxyIDs = autoAssignEnabled.value
+    ? assignProxies(props.proxies, refreshTokens.length, autoAssignConfig.value)
+    : null
+
   let successCount = 0
   let failedCount = 0
   const errors: string[] = []
@@ -4979,9 +5054,10 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
   try {
     for (let i = 0; i < refreshTokens.length; i++) {
       try {
+        const itemProxyId = agBatchProxyIDs ? agBatchProxyIDs[i] : form.proxy_id
         const tokenInfo = await antigravityOAuth.validateRefreshToken(
           refreshTokens[i],
-          form.proxy_id
+          itemProxyId
         )
         if (!tokenInfo) {
           failedCount++
@@ -4991,7 +5067,7 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
         }
 
         const credentials = antigravityOAuth.buildCredentials(tokenInfo)
-        
+
         // Generate account name with index for batch
         const accountName = refreshTokens.length > 1 ? `${form.name} #${i + 1}` : form.name
 
@@ -5003,7 +5079,7 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           type: 'oauth',
           credentials,
           extra: {},
-          proxy_id: form.proxy_id,
+          proxy_id: itemProxyId,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
           priority: form.priority,
@@ -5237,13 +5313,17 @@ const handleCookieAuth = async (sessionKey: string) => {
   oauth.error.value = ''
 
   try {
-    const proxyConfig = form.proxy_id ? { proxy_id: form.proxy_id } : {}
     const keys = oauth.parseSessionKeys(sessionKey)
 
     if (keys.length === 0) {
       oauth.error.value = t('admin.accounts.oauth.pleaseEnterSessionKey')
       return
     }
+
+    // Pre-compute auto-assign proxy IDs for batch.
+    const cookieBatchProxyIDs = autoAssignEnabled.value
+      ? assignProxies(props.proxies, keys.length, autoAssignConfig.value)
+      : null
 
     const tempUnschedPayload = tempUnschedEnabled.value
       ? buildTempUnschedRules(tempUnschedRules.value)
@@ -5264,6 +5344,8 @@ const handleCookieAuth = async (sessionKey: string) => {
 
     for (let i = 0; i < keys.length; i++) {
       try {
+        const itemProxyId = cookieBatchProxyIDs ? cookieBatchProxyIDs[i] : form.proxy_id
+        const proxyConfig = itemProxyId ? { proxy_id: itemProxyId } : {}
         const tokenInfo = await adminAPI.accounts.exchangeCode(endpoint, {
           session_id: '',
           code: keys[i],
@@ -5344,7 +5426,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           type: addMethod.value, // Use addMethod as type: 'oauth' or 'setup-token'
           credentials,
           extra,
-          proxy_id: form.proxy_id,
+          proxy_id: itemProxyId,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
           priority: form.priority,

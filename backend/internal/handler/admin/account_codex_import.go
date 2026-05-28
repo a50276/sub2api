@@ -22,23 +22,24 @@ import (
 const codexImportClockSkewSeconds int64 = 120
 
 type CodexSessionImportRequest struct {
-	Content                 string         `json:"content"`
-	Contents                []string       `json:"contents"`
-	Name                    string         `json:"name"`
-	Notes                   *string        `json:"notes"`
-	GroupIDs                []int64        `json:"group_ids"`
-	ProxyID                 *int64         `json:"proxy_id"`
-	Concurrency             *int           `json:"concurrency"`
-	Priority                *int           `json:"priority"`
-	RateMultiplier          *float64       `json:"rate_multiplier"`
-	LoadFactor              *int           `json:"load_factor"`
-	ExpiresAt               *int64         `json:"expires_at"`
-	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
-	CredentialExtras        map[string]any `json:"credential_extras"`
-	Extra                   map[string]any `json:"extra"`
-	UpdateExisting          *bool          `json:"update_existing"`
-	SkipDefaultGroupBind    *bool          `json:"skip_default_group_bind"`
-	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"`
+	Content                 string                          `json:"content"`
+	Contents                []string                        `json:"contents"`
+	Name                    string                          `json:"name"`
+	Notes                   *string                         `json:"notes"`
+	GroupIDs                []int64                         `json:"group_ids"`
+	ProxyID                 *int64                          `json:"proxy_id"`
+	AutoAssignProxy         *service.AutoAssignProxyConfig  `json:"auto_assign_proxy"`
+	Concurrency             *int                            `json:"concurrency"`
+	Priority                *int                            `json:"priority"`
+	RateMultiplier          *float64                        `json:"rate_multiplier"`
+	LoadFactor              *int                            `json:"load_factor"`
+	ExpiresAt               *int64                          `json:"expires_at"`
+	AutoPauseOnExpired      *bool                           `json:"auto_pause_on_expired"`
+	CredentialExtras        map[string]any                  `json:"credential_extras"`
+	Extra                   map[string]any                  `json:"extra"`
+	UpdateExisting          *bool                           `json:"update_existing"`
+	SkipDefaultGroupBind    *bool                           `json:"skip_default_group_bind"`
+	ConfirmMixedChannelRisk *bool                           `json:"confirm_mixed_channel_risk"`
 }
 
 type CodexSessionImportResult struct {
@@ -131,6 +132,10 @@ func (h *AccountHandler) ImportCodexSession(c *gin.Context) {
 		response.BadRequest(c, "load_factor must be <= 10000")
 		return
 	}
+	if req.ProxyID != nil && req.AutoAssignProxy != nil {
+		response.BadRequest(c, "proxy_id and auto_assign_proxy are mutually exclusive")
+		return
+	}
 
 	entries, err := parseCodexSessionImportEntries(req)
 	if err != nil {
@@ -151,6 +156,24 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 	result := CodexSessionImportResult{
 		Total: len(entries),
 		Items: make([]CodexSessionImportItem, 0, len(entries)),
+	}
+
+	// Pre-compute auto-assign proxy IDs if configured.
+	var autoAssignProxyIDs []*int64
+	if req.AutoAssignProxy != nil {
+		proxies, proxyErr := h.adminService.GetAllProxiesWithAccountCount(ctx)
+		if proxyErr != nil {
+			return result, fmt.Errorf("failed to fetch proxies for auto-assign: %w", proxyErr)
+		}
+		autoAssignProxyIDs, proxyErr = service.AssignProxies(service.ProxyAssignInput{
+			Strategy:     req.AutoAssignProxy.Strategy,
+			Proxies:      proxies,
+			AccountCount: len(entries),
+			ExcludeUsed:  req.AutoAssignProxy.ExcludeUsed,
+		})
+		if proxyErr != nil {
+			return result, fmt.Errorf("proxy auto-assign failed: %w", proxyErr)
+		}
 	}
 
 	existingAccounts, err := h.listAccountsFiltered(ctx, service.PlatformOpenAI, service.AccountTypeOAuth, "", "", 0, "", "created_at", "desc")
@@ -243,6 +266,12 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 		}
 		markCodexIdentitySeen(seenIdentity, item.IdentityKeys, entry.Index)
 
+		// Determine proxy ID for this entry (auto-assign or manual).
+		entryProxyID := req.ProxyID
+		if autoAssignProxyIDs != nil && entry.Index < len(autoAssignProxyIDs) {
+			entryProxyID = autoAssignProxyIDs[entry.Index]
+		}
+
 		if existing := index.Find(item.IdentityKeys); existing != nil && updateExisting {
 			mergedCredentials := mergeCodexImportCredentials(existing.Credentials, credentials, item)
 			mergedExtra := mergeCodexImportMap(existing.Extra, extra)
@@ -256,8 +285,8 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 				ExpiresAt:          effectiveExpiresAt,
 				AutoPauseOnExpired: autoPauseOnExpired,
 			}
-			if req.ProxyID != nil {
-				updateInput.ProxyID = req.ProxyID
+			if entryProxyID != nil {
+				updateInput.ProxyID = entryProxyID
 			}
 			if len(req.GroupIDs) > 0 {
 				groupIDs := append([]int64(nil), req.GroupIDs...)
@@ -305,7 +334,7 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 			Type:                  service.AccountTypeOAuth,
 			Credentials:           credentials,
 			Extra:                 extra,
-			ProxyID:               req.ProxyID,
+			ProxyID:               entryProxyID,
 			Concurrency:           concurrency,
 			Priority:              priority,
 			RateMultiplier:        req.RateMultiplier,

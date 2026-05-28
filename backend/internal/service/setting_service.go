@@ -4415,6 +4415,41 @@ func (s *SettingService) SetRectifierSettings(ctx context.Context, settings *Rec
 	return s.settingRepo.Set(ctx, SettingKeyRectifierSettings, string(data))
 }
 
+// GetKeywordFilterSettings 获取请求体关键词过滤配置
+func (s *SettingService) GetKeywordFilterSettings(ctx context.Context) (*KeywordFilterSettings, error) {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyKeywordFilterSettings)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return DefaultKeywordFilterSettings(), nil
+		}
+		return nil, fmt.Errorf("get keyword filter settings: %w", err)
+	}
+	if value == "" {
+		return DefaultKeywordFilterSettings(), nil
+	}
+
+	var settings KeywordFilterSettings
+	if err := json.Unmarshal([]byte(value), &settings); err != nil {
+		return DefaultKeywordFilterSettings(), nil
+	}
+
+	return &settings, nil
+}
+
+// SetKeywordFilterSettings 设置请求体关键词过滤配置
+func (s *SettingService) SetKeywordFilterSettings(ctx context.Context, settings *KeywordFilterSettings) error {
+	if settings == nil {
+		return fmt.Errorf("settings cannot be nil")
+	}
+
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("marshal keyword filter settings: %w", err)
+	}
+
+	return s.settingRepo.Set(ctx, SettingKeyKeywordFilterSettings, string(data))
+}
+
 // IsSignatureRectifierEnabled 判断签名整流是否启用（总开关 && 签名子开关）
 func (s *SettingService) IsSignatureRectifierEnabled(ctx context.Context) bool {
 	settings, err := s.GetRectifierSettings(ctx)

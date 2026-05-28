@@ -385,6 +385,10 @@ const (
 	// SettingKeyRectifierSettings stores JSON config for rectifier settings (thinking signature + budget).
 	SettingKeyRectifierSettings = "rectifier_settings"
 
+	// SettingKeyKeywordFilterSettings stores JSON config for request body keyword filtering rules.
+	// Used to defend against Anthropic Layer 2 keyword scanning detection.
+	SettingKeyKeywordFilterSettings = "keyword_filter_settings"
+
 	// =========================
 	// Beta Policy Settings
 	// =========================

@@ -3526,6 +3526,15 @@ export default {
       expired: 'Expired',
       proxy: 'Proxy',
       noProxy: 'No Proxy',
+      autoAssignProxy: 'Auto-assign Proxy',
+      autoAssignStrategy: 'Assignment Strategy',
+      autoAssignOneToOne: 'One-to-one (proxies ≥ accounts)',
+      autoAssignRoundRobin: 'Round-robin',
+      autoAssignLeastUsed: 'Least-used first',
+      autoAssignRandom: 'Random',
+      autoAssignExcludeUsed: 'Exclude already-used proxies',
+      autoAssignAvailableProxies: 'Available proxies: {count}',
+      autoAssignNotEnoughProxies: 'Not enough proxies: need {need}, available {have}',
       concurrency: 'Concurrency',
       loadFactor: 'Load Factor',
       loadFactorHint: 'Higher load factor increases scheduling frequency',
@@ -6143,6 +6152,16 @@ export default {
         addPattern: 'Add Pattern',
         saved: 'Rectifier settings saved',
         saveFailed: 'Failed to save rectifier settings'
+      },
+      keywordFilter: {
+        title: 'Keyword Filter',
+        description: 'Replace keywords in request body before forwarding to upstream, defending against third-party tool signature detection. Rules are applied in order.',
+        enabled: 'Enable Keyword Filter',
+        patternPlaceholder: 'Keyword to match',
+        replacementPlaceholder: 'Replace with (empty=remove)',
+        addRule: 'Add Rule',
+        saved: 'Keyword filter settings saved',
+        saveFailed: 'Failed to save keyword filter settings'
       },
       betaPolicy: {
         title: 'Beta Policy',

@@ -410,6 +410,45 @@ func DefaultRectifierSettings() *RectifierSettings {
 	}
 }
 
+// KeywordFilterRule 定义单条关键词替换规则
+type KeywordFilterRule struct {
+	Pattern     string `json:"pattern"`     // 匹配的关键词/短语
+	Replacement string `json:"replacement"` // 替换为（空字符串=删除）
+	Enabled     bool   `json:"enabled"`     // 是否启用
+}
+
+// KeywordFilterSettings 请求体关键词过滤配置
+// 用于防御 Anthropic Layer 2 关键词扫描检测
+type KeywordFilterSettings struct {
+	Enabled bool                `json:"enabled"` // 总开关
+	Rules   []KeywordFilterRule `json:"rules"`   // 替换规则列表
+}
+
+// DefaultKeywordFilterSettings 返回内置的默认关键词过滤规则
+func DefaultKeywordFilterSettings() *KeywordFilterSettings {
+	return &KeywordFilterSettings{
+		Enabled: true,
+		Rules: []KeywordFilterRule{
+			{Pattern: "OpenClaw", Replacement: "", Enabled: true},
+			{Pattern: "openclaw", Replacement: "", Enabled: true},
+			{Pattern: "HEARTBEAT_OK", Replacement: "", Enabled: true},
+			{Pattern: "clawhub", Replacement: "", Enabled: true},
+			{Pattern: "clawd", Replacement: "", Enabled: true},
+			{Pattern: "running inside", Replacement: "", Enabled: true},
+			{Pattern: "sessions_spawn", Replacement: "", Enabled: true},
+			{Pattern: "sessions_list", Replacement: "", Enabled: true},
+			{Pattern: "sessions_history", Replacement: "", Enabled: true},
+			{Pattern: "sessions_send", Replacement: "", Enabled: true},
+			{Pattern: "sessions_yield", Replacement: "", Enabled: true},
+			{Pattern: "sessions_store", Replacement: "", Enabled: true},
+			{Pattern: "hermes-agent", Replacement: "", Enabled: true},
+			{Pattern: "Hermes Agent", Replacement: "", Enabled: true},
+			{Pattern: "hermes_agent", Replacement: "", Enabled: true},
+			{Pattern: "You are OpenCode", Replacement: "You are Claude Code, Anthropic's official CLI for Claude.", Enabled: true},
+		},
+	}
+}
+
 // Beta Policy 策略常量
 const (
 	BetaPolicyActionPass   = "pass"   // 透传，不做任何处理
