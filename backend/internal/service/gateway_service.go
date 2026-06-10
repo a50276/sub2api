@@ -1281,7 +1281,7 @@ func (s *GatewayService) applyClaudeCodeOAuthMimicryToBody(
 
 	systemRewritten := false
 	if !strings.Contains(strings.ToLower(model), "haiku") {
-		body = rewriteSystemForNonClaudeCode(body, systemRaw)
+		body = rewriteSystemForNonClaudeCode(body, systemRaw, nil)
 		systemRewritten = true
 	}
 

@@ -395,7 +395,7 @@ func TestRewriteSystemForNonClaudeCode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := rewriteSystemForNonClaudeCode([]byte(tt.body), tt.system)
+			result := rewriteSystemForNonClaudeCode([]byte(tt.body), tt.system, nil)
 
 			var parsed map[string]any
 			err := json.Unmarshal(result, &parsed)
