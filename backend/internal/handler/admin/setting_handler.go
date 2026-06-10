@@ -3686,8 +3686,8 @@ func (h *SettingHandler) GetKeywordFilterSettings(c *gin.Context) {
 
 // UpdateKeywordFilterSettingsRequest 更新关键词过滤配置请求
 type UpdateKeywordFilterSettingsRequest struct {
-	Enabled bool                         `json:"enabled"`
-	Rules   []service.KeywordFilterRule   `json:"rules"`
+	Enabled bool                        `json:"enabled"`
+	Rules   []service.KeywordFilterRule `json:"rules"`
 }
 
 // UpdateKeywordFilterSettings 更新请求体关键词过滤配置
