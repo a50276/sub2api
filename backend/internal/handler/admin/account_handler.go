@@ -1299,7 +1299,7 @@ func (h *AccountHandler) BatchRefresh(c *gin.Context) {
 func (h *AccountHandler) BatchCreate(c *gin.Context) {
 	var req struct {
 		Accounts        []CreateAccountRequest         `json:"accounts" binding:"required,min=1"`
-		AutoAssignProxy *service.AutoAssignProxyConfig  `json:"auto_assign_proxy"`
+		AutoAssignProxy *service.AutoAssignProxyConfig `json:"auto_assign_proxy"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())

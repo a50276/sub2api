@@ -42,11 +42,11 @@ var platformFingerprints = []struct {
 	os   string
 	arch string
 }{
-	{"macOS", "arm64"},      // Apple Silicon Mac (最常见)
-	{"macOS", "x64"},        // Intel Mac
-	{"Linux", "x64"},        // Linux x64
-	{"Linux", "arm64"},      // Linux ARM (原默认)
-	{"Windows_NT", "x64"},   // Windows
+	{"macOS", "arm64"},    // Apple Silicon Mac (最常见)
+	{"macOS", "x64"},      // Intel Mac
+	{"Linux", "x64"},      // Linux x64
+	{"Linux", "arm64"},    // Linux ARM (原默认)
+	{"Windows_NT", "x64"}, // Windows
 }
 
 // diversifyPlatformFingerprint 基于 accountID 确定性选择平台指纹组合。

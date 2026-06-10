@@ -19,7 +19,7 @@ const (
 // AutoAssignProxyConfig is the user-facing configuration for auto-assign proxy.
 type AutoAssignProxyConfig struct {
 	Strategy    ProxyAssignStrategy `json:"strategy"`
-	ExcludeUsed bool               `json:"exclude_used"`
+	ExcludeUsed bool                `json:"exclude_used"`
 }
 
 // ProxyAssignInput holds all data needed by AssignProxies.
