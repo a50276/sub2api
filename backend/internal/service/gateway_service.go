@@ -46,9 +46,8 @@ const (
 	claudeAPICountTokensURL = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
 	stickySessionTTL        = time.Hour // 粘性会话TTL
 	defaultMaxLineSize      = 500 * 1024 * 1024
-	// Canonical Claude Code banner. Keep it EXACT (no trailing whitespace/newlines)
-	// to match real Claude CLI traffic as closely as possible. When we need a visual
-	// separator between system blocks, we add "\n\n" at concatenation time.
+	// Canonical Claude Code banner (短版本 — 用于不启用完整 prompt 的场景)。
+	// Keep it EXACT (no trailing whitespace/newlines) to match real Claude CLI traffic.
 	claudeCodeSystemPrompt = "You are Claude Code, Anthropic's official CLI for Claude."
 	maxCacheControlBlocks  = 4 // Anthropic API 允许的最大 cache_control 块数量
 
@@ -4080,7 +4079,10 @@ func injectClaudeCodePrompt(body []byte, system any) []byte {
 // Anthropic 基于 system 参数内容检测第三方应用，仅前置追加 Claude Code 提示词
 // 无法通过检测，因为后续内容仍为非 Claude Code 格式。
 // 策略：将原始 system prompt 提取并注入为 user/assistant 消息对，system 仅保留 Claude Code 标识。
-func rewriteSystemForNonClaudeCode(body []byte, system any) []byte {
+//
+// fullPromptOpts 不为 nil 时，注入完整的 Claude Code system prompt（~14K tokens），
+// 对齐真实 CLI 的 3-block 缓存结构：[billing, static(cached), dynamic]。
+func rewriteSystemForNonClaudeCode(body []byte, system any, fullPromptOpts *claude.SystemPromptOpts) []byte {
 	system = normalizeSystemParam(system)
 
 	// 1. 提取原始 system prompt 文本
@@ -4100,20 +4102,44 @@ func rewriteSystemForNonClaudeCode(body []byte, system any) []byte {
 		originalSystemText = strings.Join(parts, "\n\n")
 	}
 
-	// 2. 构造 system 数组，对齐真实 Claude Code CLI 的 2-block 形态：
-	//    [0] billing attribution block（cc_version={cliVer}.{fp}; cc_entrypoint=cli; cch=00000;）
-	//    [1] "You are Claude Code..." prompt block（带 cache_control 作为稳定缓存断点）
-	//
+	// 2. 构造 system 数组
 	//    billing block 的 cch=00000 是占位符，会被 buildUpstreamRequest 里的
 	//    signBillingHeaderCCH 替换成 xxhash64 签名。缺失 billing block 的系统 payload
 	//    是 Anthropic 判定第三方的关键信号之一（真实 CLI 每个请求都带）。
 	billingBlock, billingErr := buildBillingAttributionBlockJSON(body, claude.CLICurrentVersion)
-	ccPromptBlock, ccErr := marshalAnthropicSystemTextBlock(claudeCodeSystemPrompt, true)
-	if billingErr != nil || ccErr != nil {
-		logger.LegacyPrintf("service.gateway", "Warning: failed to build system blocks (billing=%v, cc=%v)", billingErr, ccErr)
+	if billingErr != nil {
+		logger.LegacyPrintf("service.gateway", "Warning: failed to build billing block: %v", billingErr)
 		return body
 	}
-	out, ok := setJSONRawBytes(body, "system", buildJSONArrayRaw([][]byte{billingBlock, ccPromptBlock}))
+
+	var systemBlocks [][]byte
+
+	if fullPromptOpts != nil {
+		// 完整 Claude Code system prompt 模式：3-block 结构
+		//   [0] billing attribution block
+		//   [1] 静态 system prompt（带 cache_control: ephemeral，可跨请求缓存）
+		//   [2] 动态 system prompt（含环境信息、日期等，每次不同）
+		staticBlock, staticErr := marshalAnthropicSystemTextBlock(claude.SystemPromptStatic, true)
+		dynamicText := claude.BuildDynamicPrompt(*fullPromptOpts)
+		dynamicBlock, dynamicErr := marshalAnthropicSystemTextBlock(dynamicText, false)
+		if staticErr != nil || dynamicErr != nil {
+			logger.LegacyPrintf("service.gateway", "Warning: failed to build full system prompt blocks (static=%v, dynamic=%v)", staticErr, dynamicErr)
+			return body
+		}
+		systemBlocks = [][]byte{billingBlock, staticBlock, dynamicBlock}
+	} else {
+		// 短版本模式：2-block 结构（原有行为）
+		//   [0] billing attribution block
+		//   [1] "You are Claude Code..." 单句（带 cache_control）
+		ccPromptBlock, ccErr := marshalAnthropicSystemTextBlock(claudeCodeSystemPrompt, true)
+		if ccErr != nil {
+			logger.LegacyPrintf("service.gateway", "Warning: failed to build cc prompt block: %v", ccErr)
+			return body
+		}
+		systemBlocks = [][]byte{billingBlock, ccPromptBlock}
+	}
+
+	out, ok := setJSONRawBytes(body, "system", buildJSONArrayRaw(systemBlocks))
 	if !ok {
 		logger.LegacyPrintf("service.gateway", "Warning: failed to set Claude Code system prompt")
 		return body
@@ -4475,7 +4501,21 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		// Parrot 的 transform_request 从不检查客户端 system 内容，直接覆盖。
 		systemRewritten := false
 		if !strings.Contains(strings.ToLower(reqModel), "haiku") {
-			body = rewriteSystemForNonClaudeCode(body, parsed.System)
+			// 决定是否注入完整 Claude Code system prompt
+			var fullPromptOpts *claude.SystemPromptOpts
+			if account.IsFullSystemPromptEnabled() {
+				// 从指纹获取平台信息以生成一致的动态 prompt
+				stainlessOS := "Linux" // 默认
+				if s.identityService != nil {
+					if fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header); err == nil && fp != nil {
+						stainlessOS = fp.StainlessOS
+					}
+				}
+				opts := claude.DefaultOptsForPlatform(stainlessOS, "", account.ID, reqModel)
+				opts.IsGitRepo = "true"
+				fullPromptOpts = &opts
+			}
+			body = rewriteSystemForNonClaudeCode(body, parsed.System, fullPromptOpts)
 			systemRewritten = true
 		}
 

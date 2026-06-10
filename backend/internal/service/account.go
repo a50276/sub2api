@@ -1543,6 +1543,25 @@ func (a *Account) IsSessionIDMaskingEnabled() bool {
 	return false
 }
 
+// IsFullSystemPromptEnabled 检查是否启用完整 Claude Code System Prompt 注入
+// 仅适用于 Anthropic OAuth/SetupToken 类型账号
+// 启用后将在请求中注入完整的 Claude Code CLI system prompt（~14K tokens），
+// 使请求更接近真实 Claude Code 客户端流量
+func (a *Account) IsFullSystemPromptEnabled() bool {
+	if !a.IsAnthropicOAuthOrSetupToken() {
+		return false
+	}
+	if a.Extra == nil {
+		return false
+	}
+	if v, ok := a.Extra["enable_full_system_prompt"]; ok {
+		if enabled, ok := v.(bool); ok {
+			return enabled
+		}
+	}
+	return false
+}
+
 // IsCustomBaseURLEnabled 检查是否启用自定义 base URL 中继转发
 // 仅适用于 Anthropic OAuth/SetupToken 类型账号
 func (a *Account) IsCustomBaseURLEnabled() bool {

@@ -3489,6 +3489,10 @@ export default {
           defaultProfile: 'Built-in Default',
           randomProfile: 'Random'
         },
+        fullSystemPrompt: {
+          label: 'Full System Prompt Simulation',
+          hint: 'Inject the full Claude Code CLI system prompt to make requests look like real Claude Code traffic. Each request costs ~3.5K extra tokens'
+        },
         sessionIdMasking: {
           label: 'Session ID Masking',
           hint: 'When enabled, fixes the session ID in metadata.user_id for 15 minutes, making upstream think requests come from the same session'

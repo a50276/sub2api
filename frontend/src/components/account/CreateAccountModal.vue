@@ -2359,6 +2359,33 @@
           </div>
         </div>
 
+        <!-- Full System Prompt Injection -->
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.fullSystemPrompt.label') }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.quotaControl.fullSystemPrompt.hint') }}
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="fullSystemPromptEnabled = !fullSystemPromptEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                fullSystemPromptEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  fullSystemPromptEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+        </div>
+
         <!-- Session ID Masking -->
         <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
           <div class="flex items-center justify-between">
@@ -3484,6 +3511,7 @@ const umqModeOptions = computed(() => [
 const tlsFingerprintEnabled = ref(false)
 const tlsFingerprintProfileId = ref<number | null>(null)
 const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
+const fullSystemPromptEnabled = ref(false)
 const sessionIdMaskingEnabled = ref(false)
 const cacheTTLOverrideEnabled = ref(false)
 const cacheTTLOverrideTarget = ref<string>('5m')
@@ -4190,6 +4218,7 @@ const resetForm = () => {
   userMsgQueueMode.value = ''
   tlsFingerprintEnabled.value = false
   tlsFingerprintProfileId.value = null
+  fullSystemPromptEnabled.value = false
   sessionIdMaskingEnabled.value = false
   cacheTTLOverrideEnabled.value = false
   cacheTTLOverrideTarget.value = '5m'
@@ -5264,6 +5293,11 @@ const handleAnthropicExchange = async (authCode: string) => {
       }
     }
 
+    // Add full system prompt settings
+    if (fullSystemPromptEnabled.value) {
+      extra.enable_full_system_prompt = true
+    }
+
     // Add session ID masking settings
     if (sessionIdMaskingEnabled.value) {
       extra.session_id_masking_enabled = true
@@ -5391,6 +5425,11 @@ const handleCookieAuth = async (sessionKey: string) => {
           if (tlsFingerprintProfileId.value) {
             extra.tls_fingerprint_profile_id = tlsFingerprintProfileId.value
           }
+        }
+
+        // Add full system prompt settings
+        if (fullSystemPromptEnabled.value) {
+          extra.enable_full_system_prompt = true
         }
 
         // Add session ID masking settings

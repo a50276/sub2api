@@ -3629,6 +3629,10 @@ export default {
           defaultProfile: '内置默认',
           randomProfile: '随机'
         },
+        fullSystemPrompt: {
+          label: '完整 System Prompt 模拟',
+          hint: '注入完整的 Claude Code CLI system prompt，使请求更接近真实 Claude Code 流量。每次请求额外消耗约 3.5K tokens'
+        },
         sessionIdMasking: {
           label: '会话 ID 伪装',
           hint: '启用后将在 15 分钟内固定 metadata.user_id 中的 session ID，使上游认为请求来自同一会话'
