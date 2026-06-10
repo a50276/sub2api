@@ -4115,11 +4115,11 @@ func rewriteSystemForNonClaudeCode(body []byte, system any, fullPromptOpts *clau
 	var systemBlocks [][]byte
 
 	if fullPromptOpts != nil {
-		// 完整 Claude Code system prompt 模式：3-block 结构（缓存优化顺序）
-		//   [0] 静态 system prompt（带 cache_control: ephemeral）— 放最前面确保缓存命中
-		//       内容跨请求完全一致，首次请求 cache creation，后续请求走 cache read（便宜 10x）
-		//   [1] billing attribution block — 每次请求 fingerprint/CCH 不同，放在缓存断点之后
+		// 完整 Claude Code system prompt 模式：3-block 结构
+		//   [0] billing attribution block — 必须放首位（Anthropic 检测第三方的关键信号）
+		//   [1] 静态 system prompt（带 cache_control: ephemeral）
 		//   [2] 动态 system prompt（含环境信息、日期等，每次不同）
+		//   注：billing 每次变化导致 cache_control 无法命中 cache read，但 billing 必须在首位
 		staticBlock, staticErr := marshalAnthropicSystemTextBlock(claude.SystemPromptStatic, true)
 		dynamicText := claude.BuildDynamicPrompt(*fullPromptOpts)
 		dynamicBlock, dynamicErr := marshalAnthropicSystemTextBlock(dynamicText, false)
@@ -4127,7 +4127,7 @@ func rewriteSystemForNonClaudeCode(body []byte, system any, fullPromptOpts *clau
 			logger.LegacyPrintf("service.gateway", "Warning: failed to build full system prompt blocks (static=%v, dynamic=%v)", staticErr, dynamicErr)
 			return body
 		}
-		systemBlocks = [][]byte{staticBlock, billingBlock, dynamicBlock}
+		systemBlocks = [][]byte{billingBlock, staticBlock, dynamicBlock}
 	} else {
 		// 短版本模式：2-block 结构（原有行为）
 		//   [0] billing attribution block
