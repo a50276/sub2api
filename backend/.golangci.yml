@@ -58,7 +58,6 @@ linters:
         - G306
         - G402
         - G404
-        - G703
       severity: high
       confidence: high
     errcheck:
