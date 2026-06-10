@@ -115,8 +115,16 @@ func generateWorkingDir(stainlessOS string, accountID int64) string {
 func mapModelInfo(model string) (displayName, modelID string) {
 	m := strings.ToLower(model)
 	switch {
+	case strings.Contains(m, "fable"):
+		return "Fable 5 (1M context)", "claude-fable-5[1m]"
+	case strings.Contains(m, "mythos"):
+		return "Mythos 5 (1M context)", "claude-mythos-5[1m]"
+	case strings.Contains(m, "opus-4-8") || strings.Contains(m, "opus-4.8"):
+		return "Opus 4.8 (1M context)", "claude-opus-4-8[1m]"
+	case strings.Contains(m, "opus-4-7") || strings.Contains(m, "opus-4.7"):
+		return "Opus 4.7 (1M context)", "claude-opus-4-7[1m]"
 	case strings.Contains(m, "opus"):
-		return "Opus 4.6 (1M context)", "claude-opus-4-6[1m]"
+		return "Opus 4.8 (1M context)", "claude-opus-4-8[1m]"
 	case strings.Contains(m, "haiku"):
 		return "Haiku 4.5", "claude-haiku-4-5-20251001"
 	default: // sonnet and others
