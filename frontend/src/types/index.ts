@@ -875,6 +875,9 @@ export interface Account {
   enable_tls_fingerprint?: boolean | null
   tls_fingerprint_profile_id?: number | null
 
+  // 完整 System Prompt 注入（仅 Anthropic OAuth/SetupToken 账号有效）
+  enable_full_system_prompt?: boolean | null
+
   // 会话ID伪装（仅 Anthropic OAuth/SetupToken 账号有效）
   // 启用后将在15分钟内固定 metadata.user_id 中的 session ID
   session_id_masking_enabled?: boolean | null
